@@ -16,9 +16,13 @@ This R Markdown project demonstrates an end-to-end pipeline for identifying and 
 
 ## 📁 Files
 - `Batch Effect Correction in Gene Expression Data.Rmd`: Main analysis script
-- `Batch Effect Correction in Gene Expression Data.html`: Rendered HTML report (optional)
+
 
 ## 📸 Preview
 ![PCA Before Correction](https://github.com/Penod/gene-expression-batch-correction/blob/main/PCA%20Before%20Batch%20Correction%20-%20Colored%20by%20Cancer.png)
 ![PCA After Correction](https://github.com/Penod/gene-expression-batch-correction/blob/main/pca_after_colored_by_color.png)
+
+
+[🟪 Heatmap - Cancer Type by Batch](https://github.com/Penod/gene-expression-batch-correction/blob/main/images/heatmap_batch_cancer.png)
+
 
