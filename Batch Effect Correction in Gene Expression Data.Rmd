@@ -1,0 +1,154 @@
+---
+title: "Batch Effect Correction in Gene Expression Data"
+author: "Emmanuel Donkoh"
+date: "2025-04-02"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    theme: united
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(sva)
+library(bladderbatch)
+library(ggplot2)
+library(plotly)
+library(viridis)
+library(BiocParallel)
+```
+
+# Introduction
+Batch effects are technical variations in gene expression data due to experimental conditions rather than biological differences. Here, we apply and evaluate batch correction using `ComBat` on the `bladderEset` dataset.
+
+# Data Preparation
+```{r data-prep}
+data(bladderdata)
+dat <- bladderEset[1:1000,]  # subset genes
+pheno <- pData(dat)
+edata <- exprs(dat)
+batch <- pheno$batch
+cancer <- pheno$cancer
+```
+
+We begin by loading the `bladderEset` dataset, which contains expression levels for bladder cancer samples. The dataset is subset to the first 1,000 genes for computational efficiency. We then extract the phenotype information (`pheno`) and expression matrix (`edata`), as well as the key variables: batch and cancer status.
+
+# Exploratory Data Analysis (Pre-Correction)
+```{r pca-raw}
+pca_raw <- prcomp(t(edata))
+pca_df_raw <- data.frame(pca_raw$x[,1:3], batch = batch, cancer = cancer)
+
+ggplot(pca_df_raw, aes(x = PC1, y = PC2, color = batch)) +
+  geom_point(size = 3) +
+  labs(title = "PCA Before Batch Correction - Colored by Batch")
+
+ggplot(pca_df_raw, aes(x = PC1, y = PC2, color = cancer)) +
+  geom_point(size = 3) +
+  labs(title = "PCA Before Batch Correction - Colored by Cancer")
+```
+
+Principal Component Analysis (PCA) was performed on the raw expression data to visualize variation across samples. The first plot colors the samples by batch, revealing strong clustering that suggests a significant batch effect. The second plot colors samples by cancer type, showing that the biological groups (Biopsy, Cancer, Normal) are not cleanly separated in the principal component space. This overlap implies that technical variation (batch) may be masking the true biological signal. Identifying this confounding is crucial before downstream analysis, as it may lead to incorrect biological interpretations.
+
+
+
+# 3D PCA Visualization
+```{r plotly-3d-raw}
+plot_ly(pca_df_raw, x = ~PC1, y = ~PC2, z = ~PC3,
+        type = 'scatter3d', mode = 'markers',
+        marker = list(color = as.numeric(batch), size = 3),
+        name = "Raw")
+```
+
+The 3D PCA plot provides a more comprehensive view of sample clustering across the first three principal components. Samples are colored by batch, and distinct clustering patterns are observed, reinforcing the presence of a strong batch effect. This spatial separation in the 3D space indicates that batch-related variation explains a significant proportion of the variance in the data. Such separation can mask underlying biological differences, leading to biased results in downstream analysis. Therefore, it is essential to perform batch correction before interpreting biological signals.
+
+# Batch Confounding Check
+```{r confounding-table}
+conf_table <- table(pheno$batch, pheno$cancer)
+conf_df <- as.data.frame(conf_table)
+colnames(conf_df) <- c("Batch", "Cancer", "Count")
+conf_table
+```
+
+```{r confounding-heatmap}
+ggplot(conf_df, aes(x = Cancer, y = as.factor(Batch), fill = Count)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  scale_fill_viridis(name = "Sample Count", option = "D", direction = -1) +
+  labs(title = "Heatmap of Cancer Type by Batch",
+       x = "Cancer Type", y = "Batch") +
+  theme_minimal(base_size = 14) +
+  theme(panel.grid = element_blank(),
+        axis.text = element_text(color = "black"),
+        plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+The heatmap illustrates the distribution of cancer types across experimental batches using a color scale where darker hues represent higher sample counts. We observe that certain cancer types (e.g., Biopsy) are concentrated in specific batches, while others are completely absent. This imbalance visually confirms strong batch–cancer confounding, which must be addressed to avoid biased conclusions in downstream analysis.
+
+# Batch Correction: Unadjusted ComBat
+```{r combat-null}
+combat_edata1 <- ComBat(dat = edata, batch = batch, mod = NULL, par.prior = TRUE, prior.plots = FALSE)
+pca_corr1 <- prcomp(t(combat_edata1))
+pca_df_corr1 <- data.frame(pca_corr1$x[,1:3], batch = batch, cancer = cancer)
+
+ggplot(pca_df_corr1, aes(x = PC1, y = PC2, color = batch)) +
+  geom_point(size = 3) +
+  labs(title = "PCA After Unadjusted ComBat")
+```
+
+After applying ComBat without adjusting for any biological variables, we observe a notable reduction in batch-driven clustering. The PCA plot shows improved dispersion and mixing of batches, suggesting successful removal of technical batch effects. However, without incorporating biological covariates like cancer type, there's a risk of also removing relevant biological signal, which can compromise downstream interpretations.
+
+# Batch Correction: Adjusted ComBat (preserving biological signal)
+```{r combat-model}
+mod <- model.matrix(~as.factor(cancer), data = pheno)
+combat_edata2 <- ComBat(dat = edata, batch = batch, mod = mod, par.prior = TRUE)
+pca_corr2 <- prcomp(t(combat_edata2))
+pca_df_corr2 <- data.frame(pca_corr2$x[,1:3], batch = batch, cancer = cancer)
+
+ggplot(pca_df_corr2, aes(x = PC1, y = PC2, color = batch)) +
+  geom_point(size = 3) +
+  labs(title = "PCA After Adjusted ComBat")
+```
+
+This PCA plot shows the result of ComBat correction while preserving biological signal by including cancer status in the model matrix. Compared to the unadjusted version, batch effects are still reduced, but with improved retention of variation potentially driven by the cancer variable. This approach strikes a balance between removing unwanted technical noise and retaining meaningful biological information, making it suitable for downstream differential expression or classification analysis.
+
+# 3D PCA (Corrected Data)
+```{r plotly-3d-corrected}
+plot_ly(pca_df_corr2, x = ~PC1, y = ~PC2, z = ~PC3,
+        type = 'scatter3d', mode = 'markers',
+        marker = list(color = as.numeric(cancer), size = 3),
+        name = "Corrected")
+```
+
+This 3D PCA plot displays the sample distribution across the top three principal components after batch correction using ComBat with cancer status preserved. Compared to the raw data, the samples now appear more evenly distributed, with reduced clustering by technical batch. Importantly, coloring by cancer status shows clearer biological grouping, indicating that batch effects have been removed without sacrificing meaningful variation associated with the phenotype of interest.
+
+# Batch Correction with Reference Batch (Model-Adjusted)
+```{r combat-ref}
+mod <- model.matrix(~as.factor(cancer), data = pheno)
+combat_edata3 <- ComBat(dat = edata, batch = batch, mod = mod, par.prior = TRUE, ref.batch = 3)
+
+# Perform PCA on batch corrected data
+pcaresults_corrected <- prcomp(t(combat_edata3))
+summary(pcaresults_corrected$x)
+
+# Extracting first 3 PCs for plotting
+pca2_cor <- data.frame(pcaresults_corrected$x[,1:3])
+pca2_cor$batch <- batch
+pca2_cor$cancer <- pheno$cancer
+
+# Plot PCA by batch
+p2 <- ggplot(data = pca2_cor, aes(x = PC1, y = PC2, color = batch)) +
+  geom_point(size = 3)
+p2
+
+# Plot PCA by cancer
+p2 <- ggplot(data = pca2_cor, aes(x = PC1, y = PC2, color = cancer)) +
+  geom_point(size = 3)
+p2
+```
+
+This final step applies ComBat with both a biological model and a reference batch specified. The PCA plots show balanced separation by cancer status while minimizing residual batch effects. Using a reference batch helps interpret batch-specific trends more conservatively in downstream comparisons.
+
+# Conclusion
+We demonstrated how batch effects in gene expression data can obscure biological signal and how `ComBat` correction (especially when adjusting for biological covariates) restores interpretability. Future work could involve differential expression analysis or clustering on corrected data.
