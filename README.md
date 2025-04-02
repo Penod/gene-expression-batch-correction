@@ -23,6 +23,6 @@ This R Markdown project demonstrates an end-to-end pipeline for identifying and 
 ![PCA After Correction](https://github.com/Penod/gene-expression-batch-correction/blob/main/pca_after_colored_by_color.png)
 
 
-[🟪 Heatmap - Cancer Type by Batch](https://github.com/Penod/gene-expression-batch-correction/blob/main/images/heatmap_batch_cancer.png)
+[🟪 Heatmap - Cancer Type by Batch](https://github.com/Penod/gene-expression-batch-correction/blob/main/heatmap_batch_cancer.png)
 
 
